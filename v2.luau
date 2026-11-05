@@ -1,7 +1,8 @@
--- Unnamed Optimized UI v2.3.1 | backward-compatible library
+-- Goody Unnamed UI v2.3.6 | Theme scope / GitHub version verified
 -- Source: user supplied Unnamed Library.lua; revised for stable tabs and modern settings
 local library = {
     Flags = {},
+    Version = "2.3.6",
     SectionsOpened = false,
     Theme = "Dark",
     Author = "Goody",
@@ -211,7 +212,7 @@ Info.Callback = Info.Callback or function() end
 local Theme = Themes[library.Theme]
 
 if Theme == nil then
-    error("There's no theme called: "..library.Theme, 0)
+    error("[Goody UI] Unknown theme: " .. tostring(library.Theme), 0)
 end
 
 local notificationMain = Instance.new("Frame")
@@ -363,7 +364,7 @@ Info.Text = Info.Text or "Window"
 local Theme = Themes[library.Theme]
 
 if Theme == nil then
-    error("There's no theme called: "..library.Theme, 0)
+    error("[Goody UI] Unknown theme: " .. tostring(library.Theme), 0)
 end
 
 local window = {}
