@@ -1,8 +1,8 @@
--- Goody Unnamed UI v2.3.6 | Theme scope / GitHub version verified
+-- Goody Unnamed UI v2.3.7 | Local Setting persistence + blue key labels
 -- Source: user supplied Unnamed Library.lua; revised for stable tabs and modern settings
 local library = {
     Flags = {},
-    Version = "2.3.6",
+    Version = "2.3.7",
     SectionsOpened = false,
     Theme = "Dark",
     Author = "Goody",
@@ -387,6 +387,59 @@ local WindowLoadingSeconds = tonumber(Info.LoadingSeconds or library.LoadingSeco
 WindowLoadingSeconds = math.max(0, WindowLoadingSeconds)
 local LoadingStart = os.clock()
 
+-- UI-only persistence. Never stores game-specific flags, sliders or farm settings.
+-- Requires executor readfile/writefile. Falls back safely to defaults when unavailable.
+local SettingsDirectory = "GoodyHub"
+local SettingsPath = SettingsDirectory .. "/UISettings.json"
+local CanReadSettings = type(readfile) == "function"
+local CanWriteSettings = type(writefile) == "function"
+local FileExists = isfile or is_file
+local CreateFolder = makefolder or make_folder or createfolder or create_folder
+local FolderExists = isfolder or is_folder
+local SaveGeneration = 0
+local SavedSettings = {Hotkey = "RightControl", AntiAFK = true}
+
+local function SaveUISettingsNow()
+    if not CanWriteSettings then return false end
+    local ok, err = pcall(function()
+        if type(CreateFolder) == "function" then
+            if type(FolderExists) ~= "function" or not FolderExists(SettingsDirectory) then
+                CreateFolder(SettingsDirectory)
+            end
+        end
+        local payload = HttpService:JSONEncode({
+            Version = 1,
+            Hotkey = Hotkey.Name,
+            AntiAFK = AntiAFKEnabled
+        })
+        writefile(SettingsPath, payload)
+    end)
+    if not ok then warn("[Goody UI] Cannot save UI settings:", err) end
+    return ok
+end
+
+local function QueueUISettingsSave()
+    SaveGeneration = SaveGeneration + 1
+    local generation = SaveGeneration
+    task.delay(0.35, function()
+        if WindowClosed or generation ~= SaveGeneration then return end
+        SaveUISettingsNow()
+    end)
+end
+
+local function LoadUISettings()
+    if not CanReadSettings then return end
+    local ok, data = pcall(function()
+        if type(FileExists) == "function" and not FileExists(SettingsPath) then return nil end
+        return HttpService:JSONDecode(readfile(SettingsPath))
+    end)
+    if not ok or type(data) ~= "table" then return end
+    if type(data.Hotkey) == "string" then SavedSettings.Hotkey = data.Hotkey end
+    if type(data.AntiAFK) == "boolean" then SavedSettings.AntiAFK = data.AntiAFK end
+end
+LoadUISettings()
+AntiAFKEnabled = SavedSettings.AntiAFK
+
 
 local unnamed = Instance.new("ScreenGui")
 unnamed.Name = HttpService:GenerateGUID(true)
@@ -613,6 +666,7 @@ end)
 
 local function DestroyWindow()
     if WindowClosed then return end
+    SaveUISettingsNow()
     WindowClosed = true
     for _, connection in ipairs(WindowConnections) do
         if connection.Connected then connection:Disconnect() end
@@ -770,12 +824,19 @@ local function NormalizeKeyCode(key)
     return nil
 end
 
+-- Restore saved hotkey only after NormalizeKeyCode is available.
+do
+    local restored = NormalizeKeyCode(SavedSettings.Hotkey)
+    if restored then Hotkey = restored end
+end
+
 -- HotkeyChanged is declared at window scope
 function window:SetHotkey(key)
     local value = NormalizeKeyCode(key)
     if not value then return false end
     Hotkey = value
     HotkeyChanged:Fire(value)
+    QueueUISettingsSave()
     return true
 end
 function window:GetHotkey() return Hotkey end
@@ -1280,7 +1341,7 @@ local keybindOuterText = Instance.new("TextLabel")
 keybindOuterText.Name = "KeybindOuterText"
 keybindOuterText.Font = Enum.Font.GothamBold
 keybindOuterText.Text = PressKey.Name
-keybindOuterText.TextColor3 = Color3.fromRGB(232, 232, 232)
+keybindOuterText.TextColor3 = Color3.fromRGB(77, 163, 255)
 keybindOuterText.TextSize = 12
 keybindOuterText.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
 keybindOuterText.BackgroundTransparency = 1
@@ -1928,6 +1989,7 @@ local buttonText = Instance.new("TextLabel")
 buttonText.Name = "ButtonText"
 buttonText.Font = Enum.Font.GothamBold
 buttonText.Text = Info.Text
+buttonText.RichText = Info.RichText == true
 buttonText.TextColor3 = Theme.ItemText
 buttonText.TextSize = 12
 buttonText.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
@@ -2026,6 +2088,7 @@ local AntiAFKToggle = settingSection:Toggle({
     Callback = function(enabled)
         if WindowClosed then return end
         AntiAFKEnabled = (enabled == true)
+        QueueUISettingsSave()
         print("[Unnamed UI] Anti-AFK:", AntiAFKEnabled and "ON" or "OFF")
     end
 })
@@ -2033,16 +2096,21 @@ function window:SetAntiAFK(enabled)
     if WindowClosed then return false end
     enabled = (enabled == true)
     AntiAFKEnabled = enabled
+    QueueUISettingsSave()
     if AntiAFKToggle then AntiAFKToggle:Set(enabled) end
     return true
 end
 local hotkeyButton
+local function ColorKeyText(keyName)
+    return 'Change Hotkey: <font color="#4DA3FF">' .. tostring(keyName) .. '</font>'
+end
 hotkeyButton = settingSection:Button({
-    Text = "Change Hotkey: " .. Hotkey.Name,
+    Text = ColorKeyText(Hotkey.Name),
+    RichText = true,
     Callback = function()
         hotkeyButton:SetText("Press ONE key...")
         window:CaptureHotkey(function(accepted, key)
-            hotkeyButton:SetText("Change Hotkey: " .. key.Name)
+            hotkeyButton:SetText(ColorKeyText(key.Name))
             if not accepted then warn("[Unnamed] Unsupported key") end
         end)
     end
@@ -2056,7 +2124,7 @@ settingSection:Button({
     Callback = function() window:SetVisible(true) end
 })
 table.insert(WindowConnections, HotkeyChanged.Event:Connect(function(key)
-    if not WindowClosed and hotkeyButton then hotkeyButton:SetText("Change Hotkey: " .. key.Name) end
+    if not WindowClosed and hotkeyButton then hotkeyButton:SetText(ColorKeyText(key.Name)) end
 end))
 settingTab:Select()
 
