@@ -1,4 +1,4 @@
--- Unnamed Optimized UI | backward-compatible library
+-- Unnamed Optimized UI v2.3.1 | backward-compatible library
 -- Source: user supplied Unnamed Library.lua; revised for stable tabs and modern settings
 local library = {
     Flags = {},
@@ -122,6 +122,8 @@ local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 local RunService = game:GetService("RunService")
 local MarketplaceService = game:GetService("MarketplaceService")
+local Players = game:GetService("Players")
+local VirtualUser = game:GetService("VirtualUser")
 
 local Mouse = game.Players.LocalPlayer:GetMouse()
 
@@ -185,14 +187,6 @@ notificationHolder.BackgroundTransparency = 1
 notificationHolder.Position = UDim2.new(0, 0, 0.5, 0)
 notificationHolder.Size = UDim2.new(1, 0, 1, 100)
 notificationHolder.Parent = notifications
-
-local settingsDivider = Instance.new("Frame")
-settingsDivider.Name = "SettingsDivider"
-settingsDivider.BackgroundColor3 = Theme.Lines
-settingsDivider.BorderSizePixel = 0
-settingsDivider.Position = UDim2.fromOffset(13, 270)
-settingsDivider.Size = UDim2.fromOffset(104, 1)
-settingsDivider.Parent = tabContainer
 
 local uIListLayout = Instance.new("UIListLayout")
 uIListLayout.Name = "UIListLayout"
@@ -382,6 +376,10 @@ local LoadingFinished = false
 local IsShowing = true
 local WindowClosed = false
 local Hotkey = Enum.KeyCode.RightControl
+-- Each window owns its Anti-AFK state and connection.
+local AntiAFKEnabled = true
+local AntiAFKHandled = 0
+local AntiAFKLastError = nil
 local WindowAuthor = Info.Author or library.Author or "Goody"
 local WindowLoadingTitle = Info.LoadingTitle or library.LoadingTitle or "Loading..."
 local WindowLoadingSeconds = tonumber(Info.LoadingSeconds or library.LoadingSeconds or 3) or 3
@@ -499,37 +497,69 @@ windowName.Position = UDim2.new(0, 6, 0, 0)
 windowName.Size = UDim2.new(0, 111, 0, 34)
 windowName.Parent = topbar
 
--- Live window metadata: FPS | game title | player name | avatar.
+-- Live window metadata: compact, left-aligned and right-anchored.
+-- Arrange actual rendered text width with 12px gaps, anchored to the avatar.
 local Players = game:GetService("Players")
+local TextService = game:GetService("TextService")
 local localPlayer = Players.LocalPlayer
-local function HeaderText(name, value, x, width, size, color)
+local function HeaderText(name, value, width, color)
     local label = Instance.new("TextLabel")
     label.Name = name
     label.BackgroundTransparency = 1
     label.Font = Enum.Font.GothamMedium
     label.Text = value
     label.TextColor3 = color or Theme.TabText
-    label.TextSize = size or 10
+    label.TextSize = 10
     label.TextTruncate = Enum.TextTruncate.AtEnd
-    label.TextXAlignment = Enum.TextXAlignment.Right
-    label.Position = UDim2.fromOffset(x, 0)
+    label.TextXAlignment = Enum.TextXAlignment.Left
     label.Size = UDim2.fromOffset(width, 34)
     label.Parent = topbar
     return label
 end
-local fpsLabel = HeaderText("FPS", "-- FPS", 114, 48, 10, Theme.Highlight)
-local gameLabel = HeaderText("GameName", game.Name, 166, 128, 10, Theme.TabText)
-local playerName = HeaderText("DisplayName", localPlayer and localPlayer.DisplayName or "Player", 301, 110, 10, Theme.TabText)
+
+local fpsLabel = HeaderText("FPS", "-- FPS", 46, Theme.Highlight)
+local gameLabel = HeaderText("GameName", game.Name, 100, Theme.TabText)
+local playerName = HeaderText("DisplayName", localPlayer and localPlayer.DisplayName or "Player", 86, Theme.TabText)
 local avatar = Instance.new("ImageLabel")
 avatar.Name = "Avatar"
 avatar.BackgroundColor3 = Theme.TabFrame
 avatar.BackgroundTransparency = 0
-avatar.Position = UDim2.fromOffset(417, 6)
+avatar.Position = UDim2.fromOffset(426, 6)
 avatar.Size = UDim2.fromOffset(22, 22)
 avatar.Parent = topbar
 local avatarCorner = Instance.new("UICorner")
 avatarCorner.CornerRadius = UDim.new(1, 0)
 avatarCorner.Parent = avatar
+
+local HEADER_GAP = 12
+local function TextPixelWidth(label, maxWidth)
+    local measured = TextService:GetTextSize(
+        label.Text, label.TextSize, label.Font, Vector2.new(1000, 34)
+    ).X
+    return math.clamp(math.ceil(measured) + 2, 20, maxWidth)
+end
+local function UpdateHeaderLayout()
+    if not topbar.Parent then return end
+    local playerWidth = TextPixelWidth(playerName, 86)
+    local gameWidth = TextPixelWidth(gameLabel, 100)
+    local fpsWidth = TextPixelWidth(fpsLabel, 46)
+    local playerX = avatar.Position.X.Offset - HEADER_GAP - playerWidth
+    local gameX = playerX - HEADER_GAP - gameWidth
+    local fpsX = gameX - HEADER_GAP - fpsWidth
+    -- Keep title readable on narrow windows; shorten the game label first.
+    if fpsX < 132 then
+        gameWidth = math.max(24, gameWidth - (132 - fpsX))
+        gameX = playerX - HEADER_GAP - gameWidth
+        fpsX = gameX - HEADER_GAP - fpsWidth
+    end
+    playerName.Position = UDim2.fromOffset(playerX, 0)
+    playerName.Size = UDim2.fromOffset(playerWidth, 34)
+    gameLabel.Position = UDim2.fromOffset(gameX, 0)
+    gameLabel.Size = UDim2.fromOffset(gameWidth, 34)
+    fpsLabel.Position = UDim2.fromOffset(fpsX, 0)
+    fpsLabel.Size = UDim2.fromOffset(fpsWidth, 34)
+end
+UpdateHeaderLayout()
 
 task.spawn(function()
     if not localPlayer then return end
@@ -546,6 +576,7 @@ task.spawn(function()
     end)
     if ok and info and type(info.Name) == "string" and gameLabel.Parent then
         gameLabel.Text = info.Name
+        UpdateHeaderLayout()
     end
 end)
 
@@ -557,6 +588,7 @@ table.insert(WindowConnections, RunService.RenderStepped:Connect(function(dt)
     if elapsed >= 0.5 then
         fpsLabel.Text = tostring(math.floor(frames / elapsed + 0.5)) .. " FPS"
         frames, elapsed = 0, 0
+        UpdateHeaderLayout()
     end
 end))
 
@@ -637,6 +669,15 @@ tabContainer.Position = UDim2.new(-0.012, 6, 0.0971, 0)
 tabContainer.Size = UDim2.new(0, 131, 0, 316)
 tabContainer.Parent = main
 
+local settingsDivider = Instance.new("Frame")
+settingsDivider.Name = "SettingsDivider"
+settingsDivider.BackgroundColor3 = Theme.Lines
+settingsDivider.BorderSizePixel = 0
+settingsDivider.Position = UDim2.fromOffset(13, 270)
+settingsDivider.Size = UDim2.fromOffset(104, 1)
+settingsDivider.Parent = tabContainer
+
+
 local tabContainerLine = Instance.new("Frame")
 tabContainerLine.Name = "TabContainerLine"
 tabContainerLine.AnchorPoint = Vector2.new(1, 0)
@@ -677,6 +718,31 @@ containers.Position = UDim2.new(0.262, 1, 0.097, 0)
 containers.Selectable = false
 containers.Size = UDim2.new(0, 368, 0, 310)
 containers.Parent = main
+
+-- Window-local Anti-AFK: no extra ScreenGui or additional hotkey.
+-- The server may implement independent idle checks; this is best effort.
+table.insert(WindowConnections, Players.LocalPlayer.Idled:Connect(function()
+    if WindowClosed or not AntiAFKEnabled then return end
+    local ok, err = pcall(function()
+        VirtualUser:CaptureController()
+        VirtualUser:ClickButton2(Vector2.new(0, 0))
+    end)
+    if ok then
+        AntiAFKHandled = AntiAFKHandled + 1
+        AntiAFKLastError = nil
+        print("[Unnamed UI] Anti-AFK idle event handled:", AntiAFKHandled)
+    else
+        AntiAFKLastError = tostring(err)
+        warn("[Unnamed UI] Anti-AFK unavailable:", AntiAFKLastError)
+    end
+end))
+
+function window:GetAntiAFK()
+    return AntiAFKEnabled
+end
+function window:GetAntiAFKStats()
+    return { Enabled = AntiAFKEnabled, Handled = AntiAFKHandled, LastError = AntiAFKLastError }
+end
 
 -- Window methods for scripts that need explicit control.
 local function NormalizeKeyCode(key)
@@ -944,7 +1010,7 @@ Left.CanvasSize = UDim2.new()
 Left.ScrollBarThickness = 0
 Left.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
 Left.BackgroundTransparency = 1
-Left.Visible = false
+Left.Visible = true
 Left.BorderSizePixel = 0
 Left.Position = UDim2.new(0, 0, 0.0195, 0)
 Left.Selectable = false
@@ -971,7 +1037,7 @@ Right.AnchorPoint = Vector2.new(1, 0)
 Right.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
 Right.BackgroundTransparency = 1
 Right.BorderSizePixel = 0
-Right.Visible = false
+Right.Visible = true
 Right.Position = UDim2.new(1, 0, 0.0194, 0)
 Right.Selectable = false
 Right.Size = UDim2.new(0, 182, 0, 306)
@@ -1272,6 +1338,8 @@ Info.Default = Info.Default or 5
 Info.Minimum = Info.Minimum or 0
 Info.Maximum = Info.Maximum or 10
 Info.Postfix = Info.Postfix or ""
+Info.Step = tonumber(Info.Step) or 1
+if Info.Step <= 0 then Info.Step = 1 end
 Info.Callback = Info.Callback or function() end
 
 if Info.Minimum > Info.Maximum then
@@ -1280,7 +1348,7 @@ if Info.Minimum > Info.Maximum then
     end
     
     Info.Default = math.clamp(Info.Default, Info.Minimum, Info.Maximum)
-    local DefaultScale = (Info.Default - Info.Minimum) / (Info.Maximum - Info.Minimum)
+    local DefaultScale = (Info.Maximum == Info.Minimum) and 0 or ((Info.Default - Info.Minimum) / (Info.Maximum - Info.Minimum))
 
 local slider = Instance.new("Frame")
 slider.Name = "Slider"
@@ -1409,7 +1477,11 @@ dragButton.MouseButton1Down:Connect(function() -- Skidded from material ui hehe,
 	MouseMove = Mouse.Move:Connect(function()
 		local Px = library:GetXY(sliderOuter)
 		SizeFromScale = (MinSize +  (MaxSize - MinSize)) * Px
-		local Value = math.floor(Info.Minimum + ((Info.Maximum - Info.Minimum) * Px))
+		local unrounded = Info.Minimum + (Info.Maximum - Info.Minimum) * Px
+        local increments = math.floor((unrounded - Info.Minimum) / Info.Step + 0.5)
+        local Value = math.clamp(Info.Minimum + increments * Info.Step, Info.Minimum, Info.Maximum)
+        -- Avoid float tails (e.g. 0.44500000000000006)
+        Value = math.floor(Value * 1000000 + 0.5) / 1000000
 		SizeFromScale = SizeFromScale - (SizeFromScale % 2)
 		TweenService:Create(sliderInner, TweenInfo.new(0.09, Enum.EasingStyle.Linear, Enum.EasingDirection.Out), {Size = UDim2.new(Px,0,0,5)}):Play()
         local iconpos = math.clamp(Px, 0.00981, 0.99141)
@@ -1906,6 +1978,12 @@ function tabtable:Select()
     for _, entry in ipairs(TabEntries) do
         local selected = (entry == thisEntry)
         if selected then
+            -- Ensure both side-scrollers are visible after selecting a tab.
+            -- Earlier UI versions created them hidden, leaving an empty page.
+            local leftPane = entry.Content:FindFirstChild("Left")
+            local rightPane = entry.Content:FindFirstChild("Right")
+            if leftPane then leftPane.Visible = true end
+            if rightPane then rightPane.Visible = true end
             if not entry.Content.Visible then
                 entry.Content.GroupTransparency = 1
                 entry.Content.Visible = true
@@ -1936,9 +2014,27 @@ end)
 return tabtable
 end
 
--- Permanent Settings tab, pinned below a visual separator.
+-- Permanent Settings tab: always created, including zero custom tabs.
+-- This tab is selected automatically until another tab is explicitly selected.
 local settingTab = window:Tab({Text = "Setting", Pinned = true})
 local settingSection = settingTab:Section({Text = "UI Settings", Side = "Left", Opened = true})
+-- Available even if the script creates no custom tabs or controls.
+local AntiAFKToggle = settingSection:Toggle({
+    Text = "Anti-AFK",
+    Default = AntiAFKEnabled,
+    Callback = function(enabled)
+        if WindowClosed then return end
+        AntiAFKEnabled = (enabled == true)
+        print("[Unnamed UI] Anti-AFK:", AntiAFKEnabled and "ON" or "OFF")
+    end
+})
+function window:SetAntiAFK(enabled)
+    if WindowClosed then return false end
+    enabled = (enabled == true)
+    AntiAFKEnabled = enabled
+    if AntiAFKToggle then AntiAFKToggle:Set(enabled) end
+    return true
+end
 local hotkeyButton
 hotkeyButton = settingSection:Button({
     Text = "Change Hotkey: " .. Hotkey.Name,
@@ -1958,9 +2054,9 @@ settingSection:Button({
     Text = "Restore UI",
     Callback = function() window:SetVisible(true) end
 })
-HotkeyChanged.Event:Connect(function(key)
-    if hotkeyButton then hotkeyButton:SetText("Change Hotkey: " .. key.Name) end
-end)
+table.insert(WindowConnections, HotkeyChanged.Event:Connect(function(key)
+    if not WindowClosed and hotkeyButton then hotkeyButton:SetText("Change Hotkey: " .. key.Name) end
+end))
 settingTab:Select()
 
 return window
