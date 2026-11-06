@@ -926,7 +926,7 @@ local function LoadingText(name, text, size, position, area, alignment)
 end
 LoadingText("LibraryName", Info.Text, 12, UDim2.fromOffset(13, 10), UDim2.new(1,-26,0,20), Enum.TextXAlignment.Left)
 LoadingText("LoadingTitle", WindowLoadingTitle, 20, UDim2.fromOffset(12, 46), UDim2.new(1,-24,0,39), Enum.TextXAlignment.Center)
-LoadingText("Author", "By " .. tostring(WindowAuthor), 11, UDim2.new(0,13,1,-30), UDim2.new(1,-26,0,19), Enum.TextXAlignment.Right)
+LoadingText("Author", "By " .. tostring(WindowAuthor), 11, UDim2.new(0,13,1,-23), UDim2.new(1,-18,0,19), Enum.TextXAlignment.Right)
 
 -- Centered loading animation: Loading. → Loading.. → Loading...
 local dotsLabel = LoadingText("LoadingDots", "Loading.", 11,
