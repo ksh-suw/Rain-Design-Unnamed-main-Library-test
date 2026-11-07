@@ -5,7 +5,7 @@ local library = {
     Version = "2.4.0",
     SectionsOpened = false,
     Theme = "Dark",
-    Author = "Goody",
+    Author = "Goody4212",
     LoadingTitle = "Loading...",
     LoadingSeconds = 3
 }
@@ -171,7 +171,7 @@ local CircleAsset = LoadIcon("Circle", "rbxassetid://6031094678")
 library.KeySystem = {
     Enabled = false,
     ApiBase = "https://axiomirhub.niztzt1015.workers.dev",
-    FilePath = "GoodyHub/AxiomirKey.json",
+    FilePath = "AxiomirHub/AxiomirKey.json",
     RequireOnlineValidation = true,
     RevalidateSeconds = 60,
 }
@@ -477,7 +477,7 @@ Info.Callback = Info.Callback or function() end
 local Theme = Themes[library.Theme]
 
 if Theme == nil then
-    error("[Goody UI] Unknown theme: " .. tostring(library.Theme), 0)
+    error("[AxiomirHub UI] Unknown theme: " .. tostring(library.Theme), 0)
 end
 
 local notificationMain = Instance.new("Frame")
@@ -629,7 +629,7 @@ Info.Text = Info.Text or "Window"
 local Theme = Themes[library.Theme]
 
 if Theme == nil then
-    error("[Goody UI] Unknown theme: " .. tostring(library.Theme), 0)
+    error("[AxiomirHub UI] Unknown theme: " .. tostring(library.Theme), 0)
 end
 
 local window = {}
@@ -654,7 +654,7 @@ local LoadingStart = os.clock()
 
 -- UI-only persistence. Never stores game-specific flags, sliders or farm settings.
 -- Requires executor readfile/writefile. Falls back safely to defaults when unavailable.
-local SettingsDirectory = "GoodyHub"
+local SettingsDirectory = "AxiomirHub"
 local SettingsPath = SettingsDirectory .. "/UISettings.json"
 local CanReadSettings = type(readfile) == "function"
 local CanWriteSettings = type(writefile) == "function"
@@ -679,7 +679,7 @@ local function SaveUISettingsNow()
         })
         writefile(SettingsPath, payload)
     end)
-    if not ok then warn("[Goody UI] Cannot save UI settings:", err) end
+    if not ok then warn("[AxiomirHub UI] Cannot save UI settings:", err) end
     return ok
 end
 
